@@ -23,8 +23,9 @@ body{padding:0 0 48px}
 h1,h2{font-family:"Instrument Serif",Georgia,serif;font-weight:400;letter-spacing:-.01em;margin:0}
 h1{font-size:clamp(30px,8vw,38px);line-height:1.05}
 p{margin:0}
-.top{padding:34px 20px 22px;text-align:center;border-bottom:2px solid var(--navy)}
+.top{padding:34px 20px 22px;text-align:center;border-bottom:2px solid var(--navy);position:relative}
 .top .hand{display:block;font-family:"Gochi Hand",cursive;font-size:15px;letter-spacing:.14em;text-transform:uppercase;color:var(--olive);margin-bottom:8px}
+.logo-mark{position:absolute;top:18px;left:20px;width:28px;height:auto;display:block}
 .top p{margin-top:10px;font-size:15px;color:rgba(23,72,84,.75)}
 
 .card{background:var(--paper);border:2px solid var(--navy);border-radius:16px;margin:22px 0;overflow:hidden}
@@ -33,12 +34,10 @@ p{margin:0}
 .label{font-size:12px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:rgba(23,72,84,.6);margin-bottom:10px;display:block}
 
 /* server picker */
-.servers{display:flex;flex-wrap:wrap;gap:8px}
-.server-btn{flex:1 1 auto;min-width:92px;padding:12px 10px;border:1.5px solid var(--line);border-radius:10px;background:#fff;color:var(--navy);font-family:inherit;font-size:14.5px;font-weight:600;cursor:pointer;text-align:center;transition:.12s}
-.server-btn:active{transform:scale(.97)}
-.server-btn.sel{background:var(--olive);border-color:var(--olive);color:#fff}
-.server-empty{font-size:14px;color:rgba(23,72,84,.6)}
-.group-label{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--olive);margin-bottom:6px}
+.server-select{width:100%;padding:13px 14px;border:1.5px solid var(--line);border-radius:10px;background:#fff;color:var(--navy);font-family:inherit;font-size:15px;font-weight:600;cursor:pointer;appearance:none;-webkit-appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='9' viewBox='0 0 14 9'%3E%3Cpath d='M1 1l6 6 6-6' stroke='%23174854' stroke-width='2' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 14px center;padding-right:38px}
+.server-select:disabled{color:rgba(23,72,84,.45);cursor:not-allowed;background-color:rgba(23,72,84,.04)}
+.server-select option{color:var(--navy)}
+.server-select option:disabled{color:rgba(23,72,84,.45)}
 
 /* stars */
 .stars-row{display:flex;flex-direction:column;gap:6px;margin-bottom:22px}
@@ -67,6 +66,7 @@ textarea::placeholder{color:rgba(23,72,84,.4)}
 <body>
 
 <div class="top wrap" style="max-width:100%;">
+  <img src="rally-mark.png" alt="Rally" class="logo-mark">
   <span class="hand">Rally</span>
   <h1>How was your <em style="font-style:italic">service</em> at Rally?</h1>
   <p>We'd love your feedback — pick who you'd like to rate and tell us about your visit.</p>
@@ -83,7 +83,9 @@ textarea::placeholder{color:rgba(23,72,84,.4)}
       </div>
       <div class="sec">
         <span class="label">Who are you rating?</span>
-        <div id="servers" class="servers"><div class="server-empty">Loading…</div></div>
+        <select id="server-select" class="server-select" disabled onchange="selectServer(this.value)">
+          <option value="" selected disabled>Loading…</option>
+        </select>
       </div>
       <div class="sec" id="stars-sec"></div>
       <div class="sec">
@@ -148,12 +150,12 @@ function updateSubmitState() {
   document.getElementById('submit-btn').disabled = !(name && EMAIL_RE.test(email) && selectedServerId && allRated);
 }
 
-function serverButtonsHtml(rows) {
-  return rows.map(r => `<button type="button" class="server-btn" data-id="${r.id}" onclick="selectServer(${r.id}, this)">${r.name}</button>`).join('');
+function serverOptionsHtml(rows) {
+  return rows.map(r => `<option value="${r.id}">${r.name}</option>`).join('');
 }
 
 async function loadServers() {
-  const box = document.getElementById('servers');
+  const sel = document.getElementById('server-select');
   try {
     const res = await fetch(`${SUPA_URL}/rest/v1/rpc/rally_active_roster`, {
       method: 'POST',
@@ -162,23 +164,25 @@ async function loadServers() {
     });
     const rows = await res.json();
     if (!Array.isArray(rows) || !rows.length) {
-      box.innerHTML = '<div class="server-empty">No one\'s available to rate right now — please let a manager know.</div>';
+      sel.innerHTML = '<option value="" selected disabled>No one\'s available to rate right now — please let a manager know.</option>';
+      sel.disabled = true;
       return;
     }
     const teamMembers = rows.filter(r => r.role === 'team_member');
     const managers = rows.filter(r => r.role === 'manager');
-    let html = '';
-    if (teamMembers.length) html += `<div class="group-label">Team Member</div><div class="servers">${serverButtonsHtml(teamMembers)}</div>`;
-    if (managers.length) html += `<div class="group-label" style="margin-top:${teamMembers.length?'14px':'0'};">Manager</div><div class="servers">${serverButtonsHtml(managers)}</div>`;
-    box.outerHTML = `<div id="servers">${html}</div>`;
+    let html = '<option value="" selected disabled>Select who you\'re rating…</option>';
+    if (teamMembers.length) html += `<optgroup label="Team Member">${serverOptionsHtml(teamMembers)}</optgroup>`;
+    if (managers.length) html += `<optgroup label="Manager">${serverOptionsHtml(managers)}</optgroup>`;
+    sel.innerHTML = html;
+    sel.disabled = false;
   } catch (e) {
-    box.innerHTML = '<div class="server-empty">Couldn\'t load the list. Please try again.</div>';
+    sel.innerHTML = '<option value="" selected disabled>Couldn\'t load the list. Please try again.</option>';
+    sel.disabled = true;
   }
 }
 
-function selectServer(id, el) {
-  selectedServerId = id;
-  document.querySelectorAll('.server-btn').forEach(b => b.classList.toggle('sel', b === el));
+function selectServer(id) {
+  selectedServerId = id ? Number(id) : null;
   updateSubmitState();
 }
 
